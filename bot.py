@@ -46,30 +46,36 @@ class TradeLockerClient:
         self.tl = None
         self.instrument_id = None
         self.connected = False
+        self.last_error = None
 
     def _is_configured(self):
         return bool(TL_EMAIL and TL_PASSWORD and TL_SERVER)
 
     def connect(self):
         if not self._is_configured():
-            log.warning("  TradeLocker credentials not set — add them in Railway Variables tab")
+            log.warning("  TradeLocker credentials not set")
             return False
         try:
             from tradelocker import TLAPI
+            log.info(f"  Connecting to {TL_ENV} as {TL_EMAIL} on server {TL_SERVER}...")
             self.tl = TLAPI(
                 environment=TL_ENV,
                 username=TL_EMAIL,
                 password=TL_PASSWORD,
                 server=TL_SERVER
             )
+            log.info("  Auth OK — fetching instrument...")
             self.instrument_id = self.tl.get_instrument_id_from_symbol_name(SYMBOL)
             if not self.instrument_id:
-                log.error(f"  Symbol '{SYMBOL}' not found — check exact name in TradeLocker")
+                self.last_error = f"Symbol '{SYMBOL}' not found"
+                log.error(f"  {self.last_error}")
                 return False
             log.info(f"  TradeLocker: Connected — {SYMBOL} → id={self.instrument_id}")
             self.connected = True
+            self.last_error = None
             return True
         except Exception as e:
+            self.last_error = str(e)
             log.error(f"  TradeLocker connection failed: {e}")
             return False
 
@@ -123,7 +129,12 @@ class TradeLockerClient:
         if not self._is_configured():
             return {"status": "NOT CONFIGURED — add TL_EMAIL, TL_PASSWORD, TL_SERVER in Railway Variables"}
         if not self.connected:
-            return {"status": "disconnected", "server": TL_SERVER}
+            # Try to connect now so the status page shows real result
+            success = self.connect()
+            if not success:
+                return {"status": "connection_failed", "server": TL_SERVER,
+                        "error": getattr(self, 'last_error', 'unknown'),
+                        "hint": "Check TL_EMAIL, TL_PASSWORD, TL_SERVER values"}
         try:
             price = self.tl.get_latest_asking_price(self.instrument_id)
             return {"status": "connected", "server": TL_SERVER, "symbol": SYMBOL, "price": price}
