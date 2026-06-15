@@ -2,3 +2,5 @@ flask==3.0.0
 requests==2.31.0
 tradelocker>=0.1.0
 gunicorn==21.2.0
+numpy<2.0.0
+pandas<2.2.0
